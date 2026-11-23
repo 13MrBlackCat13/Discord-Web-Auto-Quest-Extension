@@ -63,13 +63,27 @@ The extension will automatically detect all your active quests and start complet
 
 The extension uses advanced techniques:
 
-- **User-Agent override**: Modifies HTTP headers and navigator properties to mimic Discord desktop
-- **Webpack module injection**: Hooks into Discord's internal stores (QuestsStore, RunningGameStore, etc.)
-- **Multi-quest concurrency**: Runs all eligible quests in parallel using Promise.all
-- **API spoofing**: Intercepts quest progress updates and sends fake data
+- **User-Agent override**: Modifies HTTP headers (including Client Hints) and navigator properties to mimic the Discord desktop app
+- **Webpack module injection**: Hooks into Discord's internal stores (QuestsStore, ChannelStore, GuildChannelStore) and its authenticated API client
+- **Sequential quest execution**: Runs eligible quests one at a time, with a configurable random delay between quests, to keep behavior closer to normal usage
+- **Native API calls**: Posts incremental progress to Discord's own quest endpoints (`/quests/{id}/video-progress`, `/quests/{id}/heartbeat`) using Discord's own authenticated request client — no token handling or third-party servers involved
 - **Smart detection**: Filters quests by expiration and completion status
 
 For streaming quests, you still need at least one other person in the voice channel - the extension can't fake that part.
+
+## What's new in this fork
+
+This fork (maintained by [13MrBlackCat13](https://github.com/13MrBlackCat13)) builds on the original by [6Together9](https://github.com/nvckai) with a security/privacy pass and a few fixes:
+
+- **Tighter permissions**: `host_permissions` narrowed to the exact domains used (`discord.com`, `canary.discord.com`) instead of a `*.discord.com` wildcard; removed the unused `activeTab` permission
+- **Safer header matching**: `declarativeNetRequest` rule now matches `requestDomains` instead of a substring `urlFilter`
+- **More accurate desktop emulation**: User-Agent, `navigator.appVersion`, and `navigator.userAgentData` (Client Hints) are now kept consistent with each other and with a real current Discord desktop build, instead of only overriding `navigator.userAgent`
+- **Local assets instead of third-party CDNs**: the quest button icons are now bundled in `assets/` instead of being fetched live from two external domains on every page load
+- **Accurate privacy policy**: `PRIVACY.md` now correctly documents the local `chrome.storage` usage (UI language + delay settings) that the original policy text didn't mention
+- **Lighter page watcher**: swapped a DOM-wide `MutationObserver` for a `pushState`/`replaceState`/`popstate` hook to detect SPA navigation on `discord.com`
+- **Randomized video-quest timing**: progress increments and request intervals for `WATCH_VIDEO` quests are now randomized across a wider range instead of a near-fixed cadence
+- **Visible error logging**: network/store errors in the quest loop are now logged to the console instead of being silently swallowed
+- Removed an unused duplicate script (`user-agent-check.js`)
 
 ## Troubleshooting
 

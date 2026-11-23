@@ -1,17 +1,60 @@
 (function() {
   'use strict';
 
+  const executionKey = '__DISCORD_QUEST_COMPLETER_RUNNING';
+  const previousExecution = window[executionKey];
+  if (typeof previousExecution?.cancel === 'function') previousExecution.cancel();
+
+  const execution = {
+    cancelled: false,
+    cancelWaits: new Set(),
+    cancel() {
+      this.cancelled = true;
+      this.cancelWaits.forEach(cancelWait => cancelWait());
+    }
+  };
+  window[executionKey] = execution;
+  sendUpdate('QUEST_DELAY', { remainingMs: 0 });
+
+  function isCancelled() {
+    return execution.cancelled || window[executionKey] !== execution;
+  }
+
+  function wait(milliseconds) {
+    return new Promise(resolve => {
+      if (isCancelled()) {
+        resolve();
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        execution.cancelWaits.delete(cancelWait);
+        resolve();
+      }, milliseconds);
+      const cancelWait = () => {
+        clearTimeout(timer);
+        execution.cancelWaits.delete(cancelWait);
+        resolve();
+      };
+      execution.cancelWaits.add(cancelWait);
+    });
+  }
+
   function waitForWebpack(callback) {
     const checkInterval = 100;
     const maxAttempts = 100;
     let attempts = 0;
 
     const check = () => {
-      if (attempts >= maxAttempts) return;
+      if (isCancelled()) return;
+      if (attempts >= maxAttempts) {
+        callback(null);
+        return;
+      }
 
       if (typeof window.webpackChunkdiscord_app === 'undefined') {
         attempts++;
-        setTimeout(check, checkInterval);
+        wait(checkInterval).then(check);
         return;
       }
 
@@ -26,14 +69,14 @@
 
         if (!webpackRequire || !webpackRequire.c || Object.keys(webpackRequire.c).length < 10) {
           attempts++;
-          setTimeout(check, checkInterval);
+          wait(checkInterval).then(check);
           return;
         }
 
         callback(webpackRequire);
       } catch (error) {
         attempts++;
-        setTimeout(check, checkInterval);
+        wait(checkInterval).then(check);
       }
     };
 
@@ -67,6 +110,12 @@
       if ('__QUEST_VERSION' in window) {
         try { delete window.__QUEST_VERSION; } catch (e) {}
       }
+
+      const delayConfig = window.__QUEST_DELAY_CONFIG || { enabled: true, min: 10, max: 30 };
+      if ('__QUEST_DELAY_CONFIG' in window) {
+        try { delete window.__QUEST_DELAY_CONFIG; } catch (e) {}
+      }
+
       console.info(`Discord Auto Quest: Initializing... (v${version})`);
 
       const stores = loadStores(webpackRequire);
@@ -85,26 +134,51 @@
         name: state.questName,
         progress: Math.floor(state.currentProgress),
         target: state.secondsNeeded,
-        completed: state.completed
+        completed: state.completed,
+        active: state.active
       })));
 
-      for (const state of questStates) {
+      for (let i = 0; i < questStates.length && !isCancelled(); i++) {
+        const state = questStates[i];
         if (state.completed) continue;
 
-        while (!state.completed) {
+        state.active = true;
+        notifyUI(state, Math.floor(state.currentProgress), state.secondsNeeded, false);
+
+        while (!state.completed && !isCancelled()) {
           const isVideo = state.taskType.startsWith("WATCH_VIDEO");
 
           if (isVideo) {
             await processVideoStep(state, stores.api);
-            if (!state.completed) await new Promise(r => setTimeout(r, 1000 + (Math.random() * 500)));
+            if (!state.completed && !isCancelled()) await wait(900 + (Math.random() * 1400));
           } else {
             await processHeartbeatStep(state, stores);
-            if (!state.completed) await new Promise(r => setTimeout(r, 20000 + (Math.random() * 2000)));
+            if (!state.completed && !isCancelled()) await wait(20000 + (Math.random() * 2000));
           }
         }
+
+        if (isCancelled()) return;
+        const hasNextQuest = questStates.slice(i + 1).some(s => !s.completed);
+        if (delayConfig.enabled && hasNextQuest) {
+          const minMs = Math.max(0, Number(delayConfig.min) || 0) * 60000;
+          const maxMs = Math.max(minMs, (Number(delayConfig.max) || 0) * 60000);
+          const waitMs = minMs + Math.random() * (maxMs - minMs);
+          const endTime = Date.now() + waitMs;
+
+          while (Date.now() < endTime && !isCancelled()) {
+            const remainingMs = endTime - Date.now();
+            sendUpdate('QUEST_DELAY', { remainingMs });
+            await wait(Math.min(1000, remainingMs));
+          }
+          if (isCancelled()) return;
+          sendUpdate('QUEST_DELAY', { remainingMs: 0 });
+        }
       }
-    } catch (error) {}
+    } catch (error) {
+      console.error('Discord Auto Quest: quest loop crashed', error);
+    }
   }
+
 
   function getActiveQuests(QuestsStore) {
     const supportedTasks = ["WATCH_VIDEO", "PLAY_ON_DESKTOP", "STREAM_ON_DESKTOP", "PLAY_ACTIVITY", "WATCH_VIDEO_ON_MOBILE"];
@@ -135,6 +209,7 @@
       secondsNeeded,
       currentProgress,
       completed: currentProgress >= secondsNeeded,
+      active: false,
       enrolledAt: new Date(quest.userStatus.enrolledAt).getTime(),
       questName: quest.config.messages.questName
     };
@@ -151,31 +226,38 @@
 
       return { QuestsStore, ChannelStore, GuildChannelStore, api: api.Bo || api.tn || api };
     } catch (error) {
+      console.warn('Discord Auto Quest: failed to locate internal Discord stores', error);
       return null;
     }
   }
 
-  const notifyUI = (quest, progress, target, completed) => {
-    sendUpdate('QUEST_UPDATE', { id: quest.id, name: quest.config.messages.questName, progress, target, completed });
+  const notifyUI = (state, progress, target, completed) => {
+    const { quest, active } = state;
+    sendUpdate('QUEST_UPDATE', { id: quest.id, name: quest.config.messages.questName, progress, target, completed, active });
   };
 
   async function processVideoStep(state, api) {
     const { quest, secondsNeeded, currentProgress } = state;
-    const speed = 1;
-    
-    const nextTime = Math.min(secondsNeeded, currentProgress + speed + Math.random());
-    
+    const speed = 0.7 + Math.random() * 0.8;
+
+    const nextTime = Math.min(secondsNeeded, currentProgress + speed);
+
     try {
       const res = await api.post({ url: `/quests/${quest.id}/video-progress`, body: { timestamp: nextTime } });
+      if (isCancelled()) return;
+
       state.currentProgress = nextTime;
-      notifyUI(quest, Math.floor(state.currentProgress), secondsNeeded, false);
+      notifyUI(state, Math.floor(state.currentProgress), secondsNeeded, false);
 
       if (res.body.completed_at !== null || state.currentProgress >= secondsNeeded) {
         state.completed = true;
-        notifyUI(quest, secondsNeeded, secondsNeeded, true);
+        state.active = false;
+        notifyUI(state, secondsNeeded, secondsNeeded, true);
         await api.post({ url: `/quests/${quest.id}/video-progress`, body: { timestamp: secondsNeeded } });
       }
-    } catch (error) {}
+    } catch (error) {
+      console.warn(`Discord Auto Quest: video-progress request failed for quest ${quest.id}`, error);
+    }
   }
 
   async function processHeartbeatStep(state, stores) {
@@ -196,10 +278,11 @@
         url: `/quests/${quest.id}/heartbeat`,
         body: { stream_key: streamKey, terminal: false }
       });
+      if (isCancelled()) return;
 
       const serverProgress = response.body?.progress?.[taskType]?.value ?? 0;
       state.currentProgress = serverProgress;
-      notifyUI(quest, Math.floor(state.currentProgress), secondsNeeded, state.currentProgress >= secondsNeeded);
+      notifyUI(state, Math.floor(state.currentProgress), secondsNeeded, state.currentProgress >= secondsNeeded);
 
       if (state.currentProgress >= secondsNeeded) {
         await api.post({
@@ -207,10 +290,22 @@
           body: { stream_key: streamKey, terminal: true }
         });
         state.completed = true;
-        notifyUI(quest, secondsNeeded, secondsNeeded, true);
+        state.active = false;
+        notifyUI(state, secondsNeeded, secondsNeeded, true);
       }
-    } catch (error) {}
+    } catch (error) {
+      console.warn(`Discord Auto Quest: heartbeat request failed for quest ${quest.id}`, error);
+    }
   }
 
-  waitForWebpack(runQuestCode);
+  waitForWebpack(webpackRequire => {
+    if (!webpackRequire) {
+      if (window[executionKey] === execution) delete window[executionKey];
+      return;
+    }
+
+    runQuestCode(webpackRequire).finally(() => {
+      if (window[executionKey] === execution) delete window[executionKey];
+    });
+  });
 })();

@@ -10,10 +10,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === 'executeQuestCode') {
     if (sender.tab && sender.tab.id) {
       const manifest = chrome.runtime.getManifest();
+      const delayConfig = request.delayConfig || { enabled: true, min: 10, max: 30 };
       chrome.scripting.executeScript({
         target: { tabId: sender.tab.id },
-        func: (version) => { window.__QUEST_VERSION = version; },
-        args: [manifest.version],
+        func: (version, delay) => {
+          window.__QUEST_VERSION = version;
+          window.__QUEST_DELAY_CONFIG = delay;
+        },
+        args: [manifest.version, delayConfig],
         world: 'MAIN'
       }).then(() => {
         return chrome.scripting.executeScript({

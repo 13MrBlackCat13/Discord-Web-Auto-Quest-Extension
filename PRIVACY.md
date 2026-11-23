@@ -23,14 +23,15 @@ The Extension operates entirely locally within your browser and does not:
 - Collect website content (text, images, sounds, videos, hyperlinks)
 - Transmit any data to external servers or third parties
 - Use analytics or tracking services
-- Store data in local storage, session storage, or browser storage APIs
+
+The Extension does use the browser's local `chrome.storage` API, but only to remember two UI preferences on your own device: your selected interface language and your configured delay range between quests. This data never leaves your browser and is never transmitted anywhere.
 
 ## How the Extension Works
 
 The Extension:
 
 - Only operates on `https://discord.com/*` pages
-- Modifies HTTP request headers (User-Agent) for Discord.com requests to spoof the Discord Electron desktop client, which is required for Discord's quest API to respond correctly
+- Modifies HTTP request headers (User-Agent and Client Hints headers) for Discord.com requests to spoof the Discord Electron desktop client, which is required for Discord's quest API to respond correctly
 - Injects helper scripts (`quest-code.js`) into the active Discord tab to locate Discord's internal quest store and make POST requests to Discord's own quest API endpoints (`/quests/{id}/video-progress` and `/quests/{id}/heartbeat`)
 - Displays a UI button and progress panel on the Discord quest page (`/quest-home`) to allow users to trigger and monitor quest automation
 - Uses console logging for debugging purposes only (logs remain local to your browser)
@@ -41,10 +42,9 @@ All functionality is performed locally within your browser. The Extension does n
 
 The Extension requires the following permissions:
 
-- **Host Permission (`https://discord.com/*`)**: Required to run content scripts on Discord pages, override the User-Agent header, and interact with Discord's quest API endpoints
+- **Host Permissions (`https://discord.com/*`, `https://canary.discord.com/*`)**: Required to run content scripts on Discord pages, override the User-Agent header, and interact with Discord's quest API endpoints
 - **Scripting Permission**: Required to inject `quest-code.js` into the active Discord tab from the background service worker, in the page's MAIN world, to access Discord's internal webpack modules for quest automation
-- **ActiveTab Permission**: Required to obtain the tab ID of the currently active Discord tab so the background service worker can target the correct tab for script injection
-- **DeclarativeNetRequestWithHostAccess**: Required to modify the User-Agent HTTP request header for all requests to discord.com to emulate the Discord Electron desktop client
+- **DeclarativeNetRequestWithHostAccess**: Required to modify the User-Agent and Client Hints HTTP request headers for requests to discord.com/canary.discord.com to emulate the Discord Electron desktop client
 
 These permissions are used solely for the Extension's core quest automation functionality and are not used to collect or transmit any user data.
 
@@ -66,7 +66,7 @@ We may update this privacy policy from time to time. Any changes will be reflect
 
 ## Contact
 
-If you have any questions about this privacy policy or the Extension's data practices, please contact us through the GitHub repository at [Discord-Web-Auto-Quest-Extension](https://github.com/nvckai/Discord-Web-Auto-Quest-Extension) or through the Chrome Web Store listing.
+If you have any questions about this privacy policy or the Extension's data practices, please contact us through this fork's GitHub repository at [Discord-Web-Auto-Quest-Extension](https://github.com/13MrBlackCat13/Discord-Web-Auto-Quest-Extension) (originally created by [6Together9](https://github.com/nvckai/Discord-Web-Auto-Quest-Extension)) or through the Chrome Web Store listing.
 
 ## Compliance
 
