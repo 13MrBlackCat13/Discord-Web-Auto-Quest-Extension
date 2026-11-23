@@ -216,6 +216,19 @@
     return LANGUAGES[currentLanguage][key];
   }
 
+  let contextInvalidWarned = false;
+  function getExtensionAssetUrl(path) {
+    try {
+      return chrome.runtime.getURL(path);
+    } catch (error) {
+      if (!contextInvalidWarned) {
+        contextInvalidWarned = true;
+        console.warn('[Discord Auto Quest] Extension context was invalidated (likely reloaded/updated) — please refresh this page.');
+      }
+      return '';
+    }
+  }
+
   function loadLanguage() {
     if (typeof chrome === 'undefined' || !chrome.storage) return;
     chrome.storage.local.get([LANGUAGE_STORAGE_KEY], (result) => {
@@ -243,7 +256,7 @@
 
     const languageButton = document.getElementById('DiscordQuestLanguageButton');
     if (languageButton) {
-      languageButton.querySelector('img').src = chrome.runtime.getURL(translate('flag'));
+      languageButton.querySelector('img').src = getExtensionAssetUrl(translate('flag'));
       languageButton.title = translate('label');
       languageButton.setAttribute('aria-label', translate('label'));
     }
@@ -292,7 +305,7 @@
     button.style.cssText = STYLES.button;
 
     const icon = document.createElement('img');
-    icon.src = chrome.runtime.getURL('assets/quest-icon.svg');
+    icon.src = getExtensionAssetUrl('assets/quest-icon.svg');
     icon.alt = 'Quest Icon';
     icon.style.cssText = STYLES.icon;
     button.appendChild(icon);
@@ -305,7 +318,7 @@
 
     const expandButton = document.createElement('button');
     const arrowIcon = document.createElement('img');
-    arrowIcon.src = chrome.runtime.getURL('assets/expand-arrow.svg');
+    arrowIcon.src = getExtensionAssetUrl('assets/expand-arrow.svg');
     arrowIcon.style.cssText = 'width: 10px; height: 10px; display: block; pointer-events: none;';
     expandButton.appendChild(arrowIcon);
     expandButton.style.cssText = STYLES.expandButton + ' padding: 4px; display: flex; align-items: center; justify-content: center;';
@@ -343,16 +356,21 @@
       return;
     }
 
-    chrome.runtime.sendMessage({ action: 'executeQuestCode', delayConfig }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.error('Discord Auto Quest Error:', chrome.runtime.lastError);
-        updateButtonState(elements, { messageKey: 'error', bgColor: 'black', textColor: 'white', invertIcons: true });
-      } else if (response && response.success) {
-        updateButtonState(elements, { messageKey: 'codeExecuted', bgColor: 'black', textColor: 'white', invertIcons: true });
-      } else {
-        updateButtonState(elements, { messageKey: 'error', bgColor: 'black', textColor: 'white', invertIcons: true });
-      }
-    });
+    try {
+      chrome.runtime.sendMessage({ action: 'executeQuestCode', delayConfig }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('Discord Auto Quest Error:', chrome.runtime.lastError);
+          updateButtonState(elements, { messageKey: 'error', bgColor: 'black', textColor: 'white', invertIcons: true });
+        } else if (response && response.success) {
+          updateButtonState(elements, { messageKey: 'codeExecuted', bgColor: 'black', textColor: 'white', invertIcons: true });
+        } else {
+          updateButtonState(elements, { messageKey: 'error', bgColor: 'black', textColor: 'white', invertIcons: true });
+        }
+      });
+    } catch (error) {
+      console.warn('[Discord Auto Quest] Extension context was invalidated (likely reloaded/updated) — please refresh this page.', error);
+      updateButtonState(elements, { messageKey: 'extensionError', bgColor: '#ff4444', textColor: 'white', invertIcons: true });
+    }
   }
 
   function updateButtonState(elements, state) {
@@ -433,7 +451,7 @@
       option.setAttribute('aria-label', LANGUAGES[language].label);
       option.style.cssText = 'display: flex; align-items: center; justify-content: center; width: 30px; height: 24px; padding: 2px; border: 0; background: transparent; cursor: pointer;';
       const flag = document.createElement('img');
-      flag.src = chrome.runtime.getURL(LANGUAGES[language].flag);
+      flag.src = getExtensionAssetUrl(LANGUAGES[language].flag);
       flag.style.cssText = 'width: 22px; height: 16px; object-fit: cover;';
       option.appendChild(flag);
       option.addEventListener('click', () => setLanguage(language));
