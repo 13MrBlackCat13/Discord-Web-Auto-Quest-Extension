@@ -205,6 +205,16 @@
       padding: 6px 8px;
       margin-bottom: 8px;
       display: none;
+    `,
+    questErrorStatus: `
+      font-size: 12px;
+      color: #eee;
+      background: rgba(255, 85, 85, 0.1);
+      border: 1px solid rgba(255, 85, 85, 0.4);
+      border-radius: 6px;
+      padding: 6px 8px;
+      margin-bottom: 8px;
+      display: none;
     `
   };
 
@@ -466,6 +476,11 @@
     delayStatus.style.cssText = STYLES.delayStatus;
     panel.appendChild(delayStatus);
 
+    const questErrorStatus = document.createElement('div');
+    questErrorStatus.id = 'DiscordQuestErrorStatus';
+    questErrorStatus.style.cssText = STYLES.questErrorStatus;
+    panel.appendChild(questErrorStatus);
+
     const questListContainer = document.createElement('div');
     questListContainer.id = 'DiscordQuestList';
     questListContainer.style.cssText = STYLES.questList;
@@ -503,6 +518,7 @@
     const listContainer = document.getElementById('DiscordQuestList');
 
     if (data.type === 'QUEST_LIST') {
+      showQuestError(null);
       questStateCache.clear();
       data.data.forEach(q => questStateCache.set(q.id, q));
       if (listContainer) {
@@ -514,8 +530,23 @@
       if (listContainer) { updateQuestItemUI(listContainer, data.data); }
     } else if (data.type === 'QUEST_DELAY') {
       updateDelayStatus(data.data.remainingMs);
+    } else if (data.type === 'QUEST_ERROR') {
+      showQuestError(data.data?.message);
     }
   });
+
+  function showQuestError(message) {
+    const errorEl = document.getElementById('DiscordQuestErrorStatus');
+    if (!errorEl) return;
+
+    if (!message) {
+      errorEl.style.display = 'none';
+      return;
+    }
+
+    errorEl.textContent = `⚠️ ${message}`;
+    errorEl.style.display = 'block';
+  }
 
   function updateDelayStatus(remainingMs) {
     const statusEl = document.getElementById('DiscordQuestDelayStatus');
@@ -544,10 +575,18 @@
       item = document.createElement('div');
       item.id = `quest-item-${quest.id}`;
       item.style.cssText = STYLES.questItem;
-      item.innerHTML = `
-        <span style="${STYLES.questName}" title="${quest.name}">${quest.name}</span>
-        <span id="quest-progress-${quest.id}" style="${STYLES.questProgress}"></span>
-      `;
+
+      const nameSpanEl = document.createElement('span');
+      nameSpanEl.style.cssText = STYLES.questName;
+      nameSpanEl.title = quest.name;
+      nameSpanEl.textContent = quest.name;
+      item.appendChild(nameSpanEl);
+
+      const progressSpanEl = document.createElement('span');
+      progressSpanEl.id = `quest-progress-${quest.id}`;
+      progressSpanEl.style.cssText = STYLES.questProgress;
+      item.appendChild(progressSpanEl);
+
       container.appendChild(item);
     }
 

@@ -119,7 +119,10 @@
       console.info(`Discord Auto Quest: Initializing... (v${version})`);
 
       const stores = loadStores(webpackRequire);
-      if (!stores) return;
+      if (!stores) {
+        sendUpdate('QUEST_ERROR', { message: 'Could not locate Discord\'s internal quest modules. Discord may have updated — this extension might need an update too.' });
+        return;
+      }
 
       const activeQuests = getActiveQuests(stores.QuestsStore);
       if (activeQuests.length === 0) {
@@ -153,7 +156,7 @@
             if (!state.completed && !isCancelled()) await wait(900 + (Math.random() * 1400));
           } else {
             await processHeartbeatStep(state, stores);
-            if (!state.completed && !isCancelled()) await wait(20000 + (Math.random() * 2000));
+            if (!state.completed && !isCancelled()) await wait(17000 + (Math.random() * 7000));
           }
         }
 
@@ -176,6 +179,7 @@
       }
     } catch (error) {
       console.error('Discord Auto Quest: quest loop crashed', error);
+      sendUpdate('QUEST_ERROR', { message: 'Quest automation crashed unexpectedly. Check the browser console for details.' });
     }
   }
 
@@ -300,6 +304,7 @@
 
   waitForWebpack(webpackRequire => {
     if (!webpackRequire) {
+      sendUpdate('QUEST_ERROR', { message: 'Timed out waiting for Discord to load. Try refreshing the page and running again.' });
       if (window[executionKey] === execution) delete window[executionKey];
       return;
     }
